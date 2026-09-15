@@ -374,8 +374,8 @@ controller_server:
       use_rotate_to_heading_treshold: 0.1
       min_approach_linear_velocity: 0.5
       approach_velocity_scaling_dist: 0.5
-      v_linear_min: -5.0
-      v_linear_max: 5.0
+      v_linear_min: -3.0
+      v_linear_max: 3.0
       v_angular_min: -3.0
       v_angular_max: 3.0
       curvature_min: 0.4                                # 低曲率阈值，低于此值不减速。
@@ -569,10 +569,10 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
-    max_velocity: [5.0, 5.0, 3.0]
-    min_velocity: [-5.0, -5.0, -3.0]
-    max_accel: [2.5, 2.5, 3.0]
-    max_decel: [-2.5, -2.5, -3.0]
+    max_velocity: [3.0, 3.0, 3.0]
+    min_velocity: [-3.0, -3.0, -3.0]
+    max_accel: [1.5, 1.5, 1.5]
+    max_decel: [-1.5, -1.5, -1.5]
     odom_topic: "odometry"
     odom_duration: 0.1
     deadband_velocity: [0.02, 0.06, 0.05]      # before: [0.0, 0.0, 0.0]

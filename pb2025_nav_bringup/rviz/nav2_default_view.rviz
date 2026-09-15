@@ -5,7 +5,6 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
-        - /TerrainMapExt1
       Splitter Ratio: 0.5833333134651184
     Tree Height: 330
   - Class: rviz_common/Selection
@@ -352,7 +351,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 114
-      Enabled: true
+      Enabled: false
       Invert Rainbow: true
       Max Color: 255; 255; 255
       Max Intensity: 0.20000000298023224
@@ -373,7 +372,7 @@ Visualization Manager:
         Value: terrain_map_ext
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 0.5
       Class: rviz_default_plugins/Map
       Color Scheme: map
