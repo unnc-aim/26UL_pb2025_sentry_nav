@@ -42,6 +42,7 @@ def generate_launch_description():
     # Create the launch configuration variables
     namespace = LaunchConfiguration("namespace")
     slam = LaunchConfiguration("slam")
+    use_amcl = LaunchConfiguration("use_amcl")
     map_yaml_file = LaunchConfiguration("map")
     prior_pcd_file = LaunchConfiguration("prior_pcd_file")
     use_sim_time = LaunchConfiguration("use_sim_time")
@@ -95,6 +96,12 @@ def generate_launch_description():
 
     declare_slam_cmd = DeclareLaunchArgument(
         "slam", default_value="False", description="Whether run a SLAM"
+    )
+
+    declare_use_amcl_cmd = DeclareLaunchArgument(
+        "use_amcl",
+        default_value="False",
+        description="Use AMCL for saved-map localization",
     )
 
     declare_map_yaml_cmd = DeclareLaunchArgument(
@@ -196,6 +203,7 @@ def generate_launch_description():
                 launch_arguments={
                     "namespace": namespace,
                     "map": map_yaml_file,
+                    "use_amcl": use_amcl,
                     "use_sim_time": use_sim_time,
                     "autostart": autostart,
                     "params_file": params_file,
@@ -235,6 +243,7 @@ def generate_launch_description():
     # Declare the launch options
     ld.add_action(declare_namespace_cmd)
     ld.add_action(declare_slam_cmd)
+    ld.add_action(declare_use_amcl_cmd)
     ld.add_action(declare_map_yaml_cmd)
     ld.add_action(declare_prior_pcd_file_cmd)
     ld.add_action(declare_use_sim_time_cmd)

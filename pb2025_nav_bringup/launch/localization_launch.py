@@ -17,250 +17,187 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, SetEnvironmentVariable
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import LoadComposableNodes, Node
 from launch_ros.descriptions import ComposableNode, ParameterFile
 from nav2_common.launch import RewrittenYaml
 
 
-def generate_launch_description():
-    # Get the launch directory
-    bringup_dir = get_package_share_directory("pb2025_nav_bringup")
-
+def launch_localization(context):
     namespace = LaunchConfiguration("namespace")
-    map_yaml_file = LaunchConfiguration("map")
     use_sim_time = LaunchConfiguration("use_sim_time")
     autostart = LaunchConfiguration("autostart")
-    prior_pcd_file = LaunchConfiguration("prior_pcd_file")
-    params_file = LaunchConfiguration("params_file")
-    use_composition = LaunchConfiguration("use_composition")
-    container_name = LaunchConfiguration("container_name")
-    container_name_full = (namespace, "/", container_name)
     use_respawn = LaunchConfiguration("use_respawn")
     log_level = LaunchConfiguration("log_level")
-    initial_pose_x = LaunchConfiguration("initial_pose_x")
-    initial_pose_y = LaunchConfiguration("initial_pose_y")
-    initial_pose_yaw = LaunchConfiguration("initial_pose_yaw")
-
-    lifecycle_nodes = ["map_server"]
-
-    # Create our own temporary YAML files that include substitutions
-    param_substitutions = {"use_sim_time": use_sim_time, "yaml_filename": map_yaml_file}
-
+    prior_pcd_file = LaunchConfiguration("prior_pcd_file")
+    use_amcl = IfCondition(LaunchConfiguration("use_amcl")).evaluate(context)
+    use_composition = IfCondition(LaunchConfiguration("use_composition")).evaluate(
+        context
+    )
     configured_params = ParameterFile(
         RewrittenYaml(
-            source_file=params_file,
+            source_file=LaunchConfiguration("params_file"),
             root_key=namespace,
-            param_rewrites=param_substitutions,
+            param_rewrites={
+                "use_sim_time": use_sim_time,
+                "yaml_filename": LaunchConfiguration("map"),
+            },
             convert_types=True,
         ),
         allow_substs=True,
     )
+    lifecycle_nodes = ["map_server", "amcl"] if use_amcl else ["map_server"]
+    lifecycle_params = [
+        {
+            "use_sim_time": use_sim_time,
+            "autostart": autostart,
+            "node_names": lifecycle_nodes,
+        }
+    ]
+    localizer_params = [configured_params]
+    if use_amcl:
+        package, executable, plugin, name = (
+            "nav2_amcl",
+            "amcl",
+            "nav2_amcl::AmclNode",
+            "amcl",
+        )
+        localizer_params.append({"set_initial_pose": False})
+    else:
+        package = name = "small_gicp_relocalization"
+        executable = "small_gicp_relocalization_node"
+        plugin = "small_gicp_relocalization::SmallGicpRelocalizationNode"
+        localizer_params.append(
+            {
+                "prior_pcd_file": prior_pcd_file,
+                "initial_pose_x": LaunchConfiguration("initial_pose_x"),
+                "initial_pose_y": LaunchConfiguration("initial_pose_y"),
+                "initial_pose_yaw": LaunchConfiguration("initial_pose_yaw"),
+            }
+        )
 
-    stdout_linebuf_envvar = SetEnvironmentVariable(
-        "RCUTILS_LOGGING_BUFFERED_STREAM", "1"
-    )
-
-    colorized_output_envvar = SetEnvironmentVariable("RCUTILS_COLORIZED_OUTPUT", "1")
-
-    declare_namespace_cmd = DeclareLaunchArgument(
-        "namespace", default_value="", description="Top-level namespace"
-    )
-
-    declare_map_yaml_cmd = DeclareLaunchArgument(
-        "map", description="Full path to map yaml file to load"
-    )
-
-    declare_use_sim_time_cmd = DeclareLaunchArgument(
-        "use_sim_time",
-        default_value="false",
-        description="Use simulation (Gazebo) clock if true",
-    )
-
-    declare_prior_pcd_file_cmd = DeclareLaunchArgument(
-        "prior_pcd_file",
-        default_value="",
-        description="Full path to prior PCD file to load",
-    )
-
-    declare_params_file_cmd = DeclareLaunchArgument(
-        "params_file",
-        default_value=os.path.join(bringup_dir, "params", "nav2_params.yaml"),
-        description="Full path to the ROS2 parameters file to use for all launched nodes",
-    )
-
-    declare_autostart_cmd = DeclareLaunchArgument(
-        "autostart",
-        default_value="true",
-        description="Automatically startup the nav2 stack",
-    )
-
-    declare_use_composition_cmd = DeclareLaunchArgument(
-        "use_composition",
-        default_value="False",
-        description="Use composed bringup if True",
-    )
-
-    declare_container_name_cmd = DeclareLaunchArgument(
-        "container_name",
-        default_value="nav2_container",
-        description="the name of container that nodes will load in if use composition",
-    )
-
-    declare_use_respawn_cmd = DeclareLaunchArgument(
-        "use_respawn",
-        default_value="False",
-        description="Whether to respawn if a node crashes. Applied when composition is disabled.",
-    )
-
-    declare_log_level_cmd = DeclareLaunchArgument(
-        "log_level", default_value="info", description="log level"
-    )
-
-    declare_initial_pose_x_cmd = DeclareLaunchArgument(
-        "initial_pose_x",
-        default_value="0.7",
-        description="Robot initial x position in the map frame",
-    )
-
-    declare_initial_pose_y_cmd = DeclareLaunchArgument(
-        "initial_pose_y",
-        default_value="0.5",
-        description="Robot initial y position in the map frame",
-    )
-
-    declare_initial_pose_yaw_cmd = DeclareLaunchArgument(
-        "initial_pose_yaw",
-        default_value="0.0",
-        description="Robot initial yaw in the map frame",
-    )
-
-    start_point_lio_node = Node(
-        package="point_lio",
-        executable="pointlio_mapping",
-        name="point_lio",
-        output="screen",
-        respawn=use_respawn,
-        respawn_delay=2.0,
-        parameters=[
-            configured_params,
-            {"prior_pcd.prior_pcd_map_path": prior_pcd_file},
-        ],
-        arguments=["--ros-args", "--log-level", log_level],
-    )
-
-    load_nodes = GroupAction(
-        condition=IfCondition(PythonExpression(["not ", use_composition])),
-        actions=[
+    lio_params = [configured_params, {"prior_pcd.prior_pcd_map_path": prior_pcd_file}]
+    if use_amcl:
+        lio_params.append({"prior_pcd.enable": False, "pcd_save.pcd_save_en": False})
+    actions = [
+        Node(
+            package="point_lio",
+            executable="pointlio_mapping",
+            name="point_lio",
+            output="screen",
+            respawn=use_respawn,
+            respawn_delay=2.0,
+            parameters=lio_params,
+            arguments=["--ros-args", "--log-level", log_level],
+        )
+    ]
+    if use_composition:
+        actions.append(
+            LoadComposableNodes(
+                target_container=(
+                    namespace,
+                    "/",
+                    LaunchConfiguration("container_name"),
+                ),
+                composable_node_descriptions=[
+                    ComposableNode(
+                        package="nav2_map_server",
+                        plugin="nav2_map_server::MapServer",
+                        name="map_server",
+                        parameters=[configured_params],
+                    ),
+                    ComposableNode(
+                        package=package,
+                        plugin=plugin,
+                        name=name,
+                        parameters=localizer_params,
+                    ),
+                    ComposableNode(
+                        package="nav2_lifecycle_manager",
+                        plugin="nav2_lifecycle_manager::LifecycleManager",
+                        name="lifecycle_manager_localization",
+                        parameters=lifecycle_params,
+                    ),
+                ],
+            )
+        )
+    else:
+        actions.extend(
+            [
+                Node(
+                    package="nav2_map_server",
+                    executable="map_server",
+                    name="map_server",
+                    output="screen",
+                    respawn=use_respawn,
+                    respawn_delay=2.0,
+                    parameters=[configured_params],
+                    arguments=["--ros-args", "--log-level", log_level],
+                ),
+                Node(
+                    package=package,
+                    executable=executable,
+                    name=name,
+                    output="screen",
+                    respawn=use_respawn,
+                    respawn_delay=2.0,
+                    parameters=localizer_params,
+                    arguments=["--ros-args", "--log-level", log_level],
+                ),
+                Node(
+                    package="nav2_lifecycle_manager",
+                    executable="lifecycle_manager",
+                    name="lifecycle_manager_localization",
+                    output="screen",
+                    parameters=lifecycle_params,
+                    arguments=["--ros-args", "--log-level", log_level],
+                ),
+            ]
+        )
+    if use_amcl:
+        actions.append(
             Node(
-                package="nav2_map_server",
-                executable="map_server",
-                name="map_server",
+                package="pointcloud_to_laserscan",
+                executable="pointcloud_to_laserscan_node",
+                name="pointcloud_to_laserscan",
                 output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
+                remappings=[("cloud_in", "terrain_map_ext"), ("scan", "obstacle_scan")],
                 arguments=["--ros-args", "--log-level", log_level],
+            )
+        )
+    return actions
+
+
+def generate_launch_description():
+    bringup_dir = get_package_share_directory("pb2025_nav_bringup")
+    return LaunchDescription(
+        [
+            SetEnvironmentVariable("RCUTILS_LOGGING_BUFFERED_STREAM", "1"),
+            SetEnvironmentVariable("RCUTILS_COLORIZED_OUTPUT", "1"),
+            DeclareLaunchArgument("namespace", default_value=""),
+            DeclareLaunchArgument("map", description="Saved occupancy map YAML"),
+            DeclareLaunchArgument("use_amcl", default_value="False"),
+            DeclareLaunchArgument("use_sim_time", default_value="False"),
+            DeclareLaunchArgument("prior_pcd_file", default_value=""),
+            DeclareLaunchArgument(
+                "params_file",
+                default_value=os.path.join(
+                    bringup_dir, "config", "reality", "nav2_params.yaml"
+                ),
             ),
-            Node(
-                package="small_gicp_relocalization",
-                executable="small_gicp_relocalization_node",
-                name="small_gicp_relocalization",
-                output="screen",
-                respawn=use_respawn,
-                respawn_delay=2.0,
-                parameters=[
-                    configured_params,
-                    {
-                        "prior_pcd_file": prior_pcd_file,
-                        "initial_pose_x": initial_pose_x,
-                        "initial_pose_y": initial_pose_y,
-                        "initial_pose_yaw": initial_pose_yaw,
-                    },
-                ],
-                arguments=["--ros-args", "--log-level", log_level],
-            ),
-            Node(
-                package="nav2_lifecycle_manager",
-                executable="lifecycle_manager",
-                name="lifecycle_manager_localization",
-                output="screen",
-                arguments=["--ros-args", "--log-level", log_level],
-                parameters=[
-                    {"use_sim_time": use_sim_time},
-                    {"autostart": autostart},
-                    {"node_names": lifecycle_nodes},
-                ],
-            ),
-        ],
+            DeclareLaunchArgument("autostart", default_value="True"),
+            DeclareLaunchArgument("use_composition", default_value="False"),
+            DeclareLaunchArgument("container_name", default_value="nav2_container"),
+            DeclareLaunchArgument("use_respawn", default_value="False"),
+            DeclareLaunchArgument("log_level", default_value="info"),
+            DeclareLaunchArgument("initial_pose_x", default_value="0.7"),
+            DeclareLaunchArgument("initial_pose_y", default_value="0.5"),
+            DeclareLaunchArgument("initial_pose_yaw", default_value="0.0"),
+            OpaqueFunction(function=launch_localization),
+        ]
     )
-
-    load_composable_nodes = LoadComposableNodes(
-        condition=IfCondition(use_composition),
-        target_container=container_name_full,
-        composable_node_descriptions=[
-            ComposableNode(
-                package="nav2_map_server",
-                plugin="nav2_map_server::MapServer",
-                name="map_server",
-                parameters=[configured_params],
-            ),
-            ComposableNode(
-                package="small_gicp_relocalization",
-                plugin="small_gicp_relocalization::SmallGicpRelocalizationNode",
-                name="small_gicp_relocalization",
-                parameters=[
-                    configured_params,
-                    {
-                        "prior_pcd_file": prior_pcd_file,
-                        "initial_pose_x": initial_pose_x,
-                        "initial_pose_y": initial_pose_y,
-                        "initial_pose_yaw": initial_pose_yaw,
-                    },
-                ],
-            ),
-            ComposableNode(
-                package="nav2_lifecycle_manager",
-                plugin="nav2_lifecycle_manager::LifecycleManager",
-                name="lifecycle_manager_localization",
-                parameters=[
-                    {
-                        "use_sim_time": use_sim_time,
-                        "autostart": autostart,
-                        "node_names": lifecycle_nodes,
-                    }
-                ],
-            ),
-        ],
-    )
-
-    # Create the launch description and populate
-    ld = LaunchDescription()
-
-    # Set environment variables
-    ld.add_action(stdout_linebuf_envvar)
-    ld.add_action(colorized_output_envvar)
-
-    # Declare the launch options
-    ld.add_action(declare_namespace_cmd)
-    ld.add_action(declare_map_yaml_cmd)
-    ld.add_action(declare_use_sim_time_cmd)
-    ld.add_action(declare_prior_pcd_file_cmd)
-    ld.add_action(declare_params_file_cmd)
-    ld.add_action(declare_autostart_cmd)
-    ld.add_action(declare_use_composition_cmd)
-    ld.add_action(declare_container_name_cmd)
-    ld.add_action(declare_use_respawn_cmd)
-    ld.add_action(declare_log_level_cmd)
-    ld.add_action(declare_initial_pose_x_cmd)
-    ld.add_action(declare_initial_pose_y_cmd)
-    ld.add_action(declare_initial_pose_yaw_cmd)
-
-    # Add the actions to launch all of the localiztion nodes
-    ld.add_action(start_point_lio_node)
-    ld.add_action(load_nodes)
-    ld.add_action(load_composable_nodes)
-
-    return ld
