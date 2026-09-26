@@ -19,6 +19,14 @@
   <exec_depend>nav2_common</exec_depend>
   <exec_depend>nav2_amcl</exec_depend>
   <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>lifecycle_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
   <exec_depend>pb_nav2_plugins</exec_depend>
   <exec_depend>pb2025_sentry_nav</exec_depend>
   <exec_depend>pb_teleop_twist_joy</exec_depend>

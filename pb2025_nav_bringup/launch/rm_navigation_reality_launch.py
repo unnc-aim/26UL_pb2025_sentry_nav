@@ -258,12 +258,11 @@ def generate_launch_description():
         condition=UnlessCondition(slam),
         actions=[
             Node(
-                executable="/usr/bin/python3",
+                package="pb2025_nav_bringup",
+                executable="amcl_initializer.py",
                 namespace=namespace,
                 condition=IfCondition(auto_global_localization),
                 arguments=[
-                    # ponytail: fixed workspace path; install with the package when relocating.
-                    "/home/soyo/sentry_ws/scripts/real_acceptance/localization_probe.py",
                     "--globalize",
                     "--seconds",
                     "15",
