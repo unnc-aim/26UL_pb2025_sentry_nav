@@ -54,10 +54,9 @@ SensorScanGenerationNode::SensorScanGenerationNode(const rclcpp::NodeOptions & o
 
   sync_ = std::make_unique<message_filters::Synchronizer<SyncPolicy>>(
     SyncPolicy(100), odometry_sub_, laser_cloud_sub_);
-  sync_->registerCallback(
-    std::bind(
-      &SensorScanGenerationNode::laserCloudAndOdometryHandler, this, std::placeholders::_1,
-      std::placeholders::_2));
+  sync_->registerCallback(std::bind(
+    &SensorScanGenerationNode::laserCloudAndOdometryHandler, this, std::placeholders::_1,
+    std::placeholders::_2));
 }
 
 void SensorScanGenerationNode::laserCloudAndOdometryHandler(
@@ -70,8 +69,15 @@ void SensorScanGenerationNode::laserCloudAndOdometryHandler(
   tf2::Transform tf_odom_to_lidar;
 
   tf2::fromMsg(odometry_msg->pose.pose, tf_odom_to_lidar);
-  tf_lidar_to_robot_base_ = getTransform(lidar_frame_, robot_base_frame_, pcd_msg->header.stamp);
-  tf_lidar_to_chassis = getTransform(lidar_frame_, base_frame_, pcd_msg->header.stamp);
+  try {
+    tf_lidar_to_robot_base_ = getTransform(lidar_frame_, robot_base_frame_, pcd_msg->header.stamp);
+    tf_lidar_to_chassis = getTransform(lidar_frame_, base_frame_, pcd_msg->header.stamp);
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 2000,
+      "TF lookup failed: %s. Skipping scan and odometry.", ex.what());
+    return;
+  }
 
   tf_odom_to_chassis = tf_odom_to_lidar * tf_lidar_to_chassis;
   tf_odom_to_robot_base = tf_odom_to_lidar * tf_lidar_to_robot_base_;
@@ -89,16 +95,11 @@ void SensorScanGenerationNode::laserCloudAndOdometryHandler(
 tf2::Transform SensorScanGenerationNode::getTransform(
   const std::string & target_frame, const std::string & source_frame, const rclcpp::Time & time)
 {
-  try {
-    auto transform_stamped = tf_buffer_->lookupTransform(
-      target_frame, source_frame, time, rclcpp::Duration::from_seconds(0.5));
-    tf2::Transform transform;
-    tf2::fromMsg(transform_stamped.transform, transform);
-    return transform;
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN(this->get_logger(), "TF lookup failed: %s. Returning identity.", ex.what());
-    return tf2::Transform::getIdentity();
-  }
+  auto transform_stamped = tf_buffer_->lookupTransform(
+    target_frame, source_frame, time, rclcpp::Duration::from_seconds(0.5));
+  tf2::Transform transform;
+  tf2::fromMsg(transform_stamped.transform, transform);
+  return transform;
 }
 
 void SensorScanGenerationNode::publishTransform(
@@ -128,31 +129,30 @@ void SensorScanGenerationNode::publishOdometry(
   out.pose.pose.position.z = origin.z();
   out.pose.pose.orientation = tf2::toMsg(transform.getRotation());
 
-  static tf2::Transform previous_transform;
-  static auto previous_time = std::chrono::steady_clock::now();
-  const auto current_time = std::chrono::steady_clock::now();
-
-  const double dt =
-    std::chrono::duration_cast<std::chrono::nanoseconds>(current_time - previous_time).count() *
-    1e-9;
-
-  if (dt > 0) {
-    const auto linear_velocity = (transform.getOrigin() - previous_transform.getOrigin()) / dt;
-
-    const tf2::Quaternion q_diff =
-      transform.getRotation() * previous_transform.getRotation().inverse();
-    const auto angular_velocity = q_diff.getAxis() * q_diff.getAngle() / dt;
-
-    out.twist.twist.linear.x = linear_velocity.x();
-    out.twist.twist.linear.y = linear_velocity.y();
-    out.twist.twist.linear.z = linear_velocity.z();
-    out.twist.twist.angular.x = angular_velocity.x();
-    out.twist.twist.angular.y = angular_velocity.y();
-    out.twist.twist.angular.z = angular_velocity.z();
+  if (previous_odometry_valid_) {
+    const double dt = (stamp - previous_odometry_stamp_).seconds();
+    if (dt > 0.0) {
+      const auto inverse_rotation = transform.getRotation().inverse();
+      const auto linear_velocity = tf2::quatRotate(
+        inverse_rotation, (transform.getOrigin() - previous_transform_.getOrigin()) / dt);
+      auto delta = transform.getRotation() * previous_transform_.getRotation().inverse();
+      delta.normalize();
+      if (delta.w() < 0.0) {
+        delta = tf2::Quaternion(-delta.x(), -delta.y(), -delta.z(), -delta.w());
+      }
+      const auto angular_velocity =
+        tf2::quatRotate(inverse_rotation, delta.getAxis() * (delta.getAngle() / dt));
+      out.twist.twist.linear.x = linear_velocity.x();
+      out.twist.twist.linear.y = linear_velocity.y();
+      out.twist.twist.linear.z = linear_velocity.z();
+      out.twist.twist.angular.x = angular_velocity.x();
+      out.twist.twist.angular.y = angular_velocity.y();
+      out.twist.twist.angular.z = angular_velocity.z();
+    }
   }
-
-  previous_transform = transform;
-  previous_time = current_time;
+  previous_transform_ = transform;
+  previous_odometry_stamp_ = stamp;
+  previous_odometry_valid_ = true;
 
   pub_chassis_odometry_->publish(out);
 }

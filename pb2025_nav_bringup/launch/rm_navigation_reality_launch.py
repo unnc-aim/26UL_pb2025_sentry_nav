@@ -20,13 +20,14 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    GroupAction,
     IncludeLaunchDescription,
     LogInfo,
     SetEnvironmentVariable,
 )
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, TextSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, TextSubstitution
 from launch_ros.actions import Node
 from launch_ros.descriptions import ParameterFile
 from nav2_common.launch import RewrittenYaml
@@ -40,6 +41,7 @@ def generate_launch_description():
     # Create the launch configuration variables
     namespace = LaunchConfiguration("namespace")
     slam = LaunchConfiguration("slam")
+    auto_global_localization = LaunchConfiguration("auto_global_localization")
     world = LaunchConfiguration("world")
     map_yaml_file = LaunchConfiguration("map")
     prior_pcd_file = LaunchConfiguration("prior_pcd_file")
@@ -80,7 +82,13 @@ def generate_launch_description():
     declare_slam_cmd = DeclareLaunchArgument(
         "slam",
         default_value="False",
-        description="Whether run a SLAM. If True, it will disable small_gicp and send static tf (map->odom)",
+        description="Use mapping mode when True; saved-map AMCL localization when False",
+    )
+
+    declare_auto_global_localization_cmd = DeclareLaunchArgument(
+        "auto_global_localization",
+        default_value="True",
+        description="Request AMCL global initialization in saved-map mode",
     )
 
     declare_world_cmd = DeclareLaunchArgument(
@@ -232,6 +240,7 @@ def generate_launch_description():
         launch_arguments={
             "namespace": namespace,
             "slam": slam,
+            "use_amcl": "True",
             "map": map_yaml_file,
             "prior_pcd_file": prior_pcd_file,
             "use_sim_time": use_sim_time,
@@ -243,6 +252,28 @@ def generate_launch_description():
             "initial_pose_y": initial_pose_y,
             "initial_pose_yaw": initial_pose_yaw,
         }.items(),
+    )
+
+    initialize_amcl_cmd = GroupAction(
+        condition=UnlessCondition(slam),
+        actions=[
+            Node(
+                package="pb2025_nav_bringup",
+                executable="amcl_initializer.py",
+                namespace=namespace,
+                condition=IfCondition(auto_global_localization),
+                arguments=[
+                    "--globalize",
+                    "--seconds",
+                    "15",
+                    "--output",
+                    PathJoinSubstitution([log_dir, "localization.json"]),
+                ],
+                parameters=[{"use_sim_time": use_sim_time}],
+                remappings=[("/tf", "tf"), ("/tf_static", "tf_static")],
+                output="screen",
+            ),
+        ],
     )
 
     joy_teleop_cmd = IncludeLaunchDescription(
@@ -259,6 +290,7 @@ def generate_launch_description():
     # Declare the launch options
     ld.add_action(declare_namespace_cmd)
     ld.add_action(declare_slam_cmd)
+    ld.add_action(declare_auto_global_localization_cmd)
     ld.add_action(declare_world_cmd)
     ld.add_action(declare_map_yaml_cmd)
     ld.add_action(declare_prior_pcd_file_cmd)
@@ -281,6 +313,7 @@ def generate_launch_description():
     ld.add_action(start_robot_state_publisher_cmd)
     ld.add_action(start_livox_ros_driver2_node)
     ld.add_action(bringup_cmd)
+    ld.add_action(initialize_amcl_cmd)
     ld.add_action(joy_teleop_cmd)
     ld.add_action(rviz_cmd)
 
