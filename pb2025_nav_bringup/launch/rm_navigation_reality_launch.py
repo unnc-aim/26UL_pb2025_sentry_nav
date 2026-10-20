@@ -53,6 +53,8 @@ def generate_launch_description():
     rviz_config_file = LaunchConfiguration("rviz_config_file")
     use_robot_state_pub = LaunchConfiguration("use_robot_state_pub")
     use_rviz = LaunchConfiguration("use_rviz")
+    use_external_odometry = LaunchConfiguration("use_external_odometry")
+    use_joy_teleop = LaunchConfiguration("use_joy_teleop")
     log_dir = LaunchConfiguration("log_dir")
     initial_pose_x = LaunchConfiguration("initial_pose_x")
     initial_pose_y = LaunchConfiguration("initial_pose_y")
@@ -217,6 +219,7 @@ def generate_launch_description():
     )
 
     start_livox_ros_driver2_node = Node(
+        condition=UnlessCondition(use_external_odometry),
         package="livox_ros_driver2",
         executable="livox_ros_driver2_node",
         name="livox_ros_driver2",
@@ -241,6 +244,7 @@ def generate_launch_description():
             "namespace": namespace,
             "slam": slam,
             "use_amcl": "True",
+            "use_external_odometry": use_external_odometry,
             "map": map_yaml_file,
             "prior_pcd_file": prior_pcd_file,
             "use_sim_time": use_sim_time,
@@ -278,6 +282,7 @@ def generate_launch_description():
 
     joy_teleop_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(launch_dir, "joy_teleop_launch.py")),
+        condition=IfCondition(use_joy_teleop),
         launch_arguments={
             "namespace": namespace,
             "use_sim_time": use_sim_time,
@@ -289,6 +294,8 @@ def generate_launch_description():
 
     # Declare the launch options
     ld.add_action(declare_namespace_cmd)
+    ld.add_action(DeclareLaunchArgument("use_external_odometry", default_value="False"))
+    ld.add_action(DeclareLaunchArgument("use_joy_teleop", default_value="True"))
     ld.add_action(declare_slam_cmd)
     ld.add_action(declare_auto_global_localization_cmd)
     ld.add_action(declare_world_cmd)

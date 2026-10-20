@@ -14,6 +14,9 @@
 
 #include "sensor_scan_generation/sensor_scan_generation.hpp"
 
+#include <cmath>
+#include <stdexcept>
+
 #include "pcl_ros/transforms.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
@@ -26,6 +29,10 @@ SensorScanGenerationNode::SensorScanGenerationNode(const rclcpp::NodeOptions & o
   this->declare_parameter<std::string>("lidar_frame", "");
   this->declare_parameter<std::string>("base_frame", "");
   this->declare_parameter<std::string>("robot_base_frame", "");
+  const double sync_min_interval = this->declare_parameter<double>("sync_min_interval", 0.0);
+  if (!std::isfinite(sync_min_interval) || sync_min_interval < 0.0) {
+    throw std::invalid_argument("sync_min_interval must be finite and nonnegative");
+  }
 
   this->get_parameter("lidar_frame", lidar_frame_);
   this->get_parameter("base_frame", base_frame_);
@@ -50,10 +57,16 @@ SensorScanGenerationNode::SensorScanGenerationNode(const rclcpp::NodeOptions & o
     false};
 
   odometry_sub_.subscribe(this, "lidar_odometry", qos_profile);
-  laser_cloud_sub_.subscribe(this, "registered_scan", qos_profile);
+  // loam_interface publishes reliable clouds; retain retransmission for their fragments.
+  auto cloud_qos = qos_profile;
+  cloud_qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+  cloud_qos.depth = 5;
+  laser_cloud_sub_.subscribe(this, "registered_scan", cloud_qos);
 
   sync_ = std::make_unique<message_filters::Synchronizer<SyncPolicy>>(
     SyncPolicy(100), odometry_sub_, laser_cloud_sub_);
+  sync_->setInterMessageLowerBound(0, rclcpp::Duration::from_seconds(sync_min_interval));
+  sync_->setInterMessageLowerBound(1, rclcpp::Duration::from_seconds(sync_min_interval));
   sync_->registerCallback(std::bind(
     &SensorScanGenerationNode::laserCloudAndOdometryHandler, this, std::placeholders::_1,
     std::placeholders::_2));

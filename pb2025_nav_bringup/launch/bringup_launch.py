@@ -43,6 +43,7 @@ def generate_launch_description():
     namespace = LaunchConfiguration("namespace")
     slam = LaunchConfiguration("slam")
     use_amcl = LaunchConfiguration("use_amcl")
+    use_external_odometry = LaunchConfiguration("use_external_odometry")
     map_yaml_file = LaunchConfiguration("map")
     prior_pcd_file = LaunchConfiguration("prior_pcd_file")
     use_sim_time = LaunchConfiguration("use_sim_time")
@@ -187,6 +188,7 @@ def generate_launch_description():
                 launch_arguments={
                     "namespace": namespace,
                     "use_sim_time": use_sim_time,
+                    "use_external_odometry": use_external_odometry,
                     "autostart": autostart,
                     "use_respawn": use_respawn,
                     "params_file": params_file,
@@ -204,6 +206,7 @@ def generate_launch_description():
                     "namespace": namespace,
                     "map": map_yaml_file,
                     "use_amcl": use_amcl,
+                    "use_external_odometry": use_external_odometry,
                     "use_sim_time": use_sim_time,
                     "autostart": autostart,
                     "params_file": params_file,
@@ -242,6 +245,7 @@ def generate_launch_description():
 
     # Declare the launch options
     ld.add_action(declare_namespace_cmd)
+    ld.add_action(DeclareLaunchArgument("use_external_odometry", default_value="False"))
     ld.add_action(declare_slam_cmd)
     ld.add_action(declare_use_amcl_cmd)
     ld.add_action(declare_map_yaml_cmd)

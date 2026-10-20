@@ -18,7 +18,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction, SetEnvironmentVariable
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import LoadComposableNodes, Node
 from launch_ros.descriptions import ComposableNode, ParameterFile
@@ -83,6 +83,7 @@ def launch_localization(context):
         lio_params.append({"prior_pcd.enable": False, "pcd_save.pcd_save_en": False})
     actions = [
         Node(
+            condition=UnlessCondition(LaunchConfiguration("use_external_odometry")),
             package="point_lio",
             executable="pointlio_mapping",
             name="point_lio",
@@ -182,6 +183,7 @@ def generate_launch_description():
             DeclareLaunchArgument("namespace", default_value=""),
             DeclareLaunchArgument("map", description="Saved occupancy map YAML"),
             DeclareLaunchArgument("use_amcl", default_value="False"),
+            DeclareLaunchArgument("use_external_odometry", default_value="False"),
             DeclareLaunchArgument("use_sim_time", default_value="False"),
             DeclareLaunchArgument("prior_pcd_file", default_value=""),
             DeclareLaunchArgument(

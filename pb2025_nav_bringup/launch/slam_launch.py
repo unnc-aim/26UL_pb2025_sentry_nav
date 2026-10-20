@@ -18,6 +18,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.descriptions import ParameterFile
@@ -161,6 +162,7 @@ def generate_launch_description():
     )
 
     start_point_lio_node = Node(
+        condition=UnlessCondition(LaunchConfiguration("use_external_odometry")),
         package="point_lio",
         executable="pointlio_mapping",
         name="point_lio",
@@ -177,6 +179,7 @@ def generate_launch_description():
     )
 
     start_static_transform_node = Node(
+        condition=UnlessCondition(LaunchConfiguration("use_external_odometry")),
         package="tf2_ros",
         executable="static_transform_publisher",
         name="static_transform_publisher_map2odom",
@@ -205,6 +208,7 @@ def generate_launch_description():
 
     # Declare the launch options
     ld.add_action(declare_namespace_cmd)
+    ld.add_action(DeclareLaunchArgument("use_external_odometry", default_value="False"))
     ld.add_action(declare_params_file_cmd)
     ld.add_action(declare_use_sim_time_cmd)
     ld.add_action(declare_autostart_cmd)
