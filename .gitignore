@@ -21,3 +21,7 @@ __pycache__
 
 pb2025_nav_bringup/map/reality/*.yaml
 pb2025_nav_bringup/map/reality/*.pgm
+
+# Current Odin competition map.
+!pb2025_nav_bringup/map/reality/odin_20261019_220142.yaml
+!pb2025_nav_bringup/map/reality/odin_20261019_220142.pgm

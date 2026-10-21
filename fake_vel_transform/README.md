@@ -29,3 +29,6 @@ Related issue: [Switch from Twist to TwistStamped for cmd_vel #1594](https://git
 * `input_cmd_vel_topic` (`string`, default: "") - 输入速度指令的话题
 * `output_cmd_vel_topic` (`string`, default: "") - 输出速度指令的话题。将原本基于 `fake_robot_base_frame` 的速度变换到 `robot_base_frame` 后发布
 * `init_spin_speed` (`double`, default: 0.0) - 若没有接收 `cmd_spin_topic`，则使用该值作为固定旋转速度
+* `remote_spin_topic` (`string`, default: "") - 启用后，行为树旋转发布者存在时使用 `cmd_spin_topic`，包括显式零速度；发布者退出后使用 Hub 提供的遥控旋转速度（rad/s）。遥控消息有效期为 0.2 秒。空值保留原有固定旋转速度处理。
+
+Odin 导航配置使用 `/universal_controller/remote_spin`。Hub 按现有遥控输入优先级、拨杆和急停状态生成该值。速度转换继续检查里程计和云台姿态；数据过期时输出完整零速度。比赛树初始化及等待开赛阶段的 `cmd_spin=0` 继续保持底盘静止。

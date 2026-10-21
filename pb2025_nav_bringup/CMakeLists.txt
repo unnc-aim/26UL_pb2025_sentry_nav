@@ -7,6 +7,7 @@ install(PROGRAMS
   scripts/amcl_initializer.py
   DESTINATION lib/${PROJECT_NAME}
 )
+install(FILES scripts/scan_map_matcher.py DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
 find_package(ament_lint_auto REQUIRED)

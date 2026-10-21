@@ -30,8 +30,18 @@ SensorScanGenerationNode::SensorScanGenerationNode(const rclcpp::NodeOptions & o
   this->declare_parameter<std::string>("base_frame", "");
   this->declare_parameter<std::string>("robot_base_frame", "");
   const double sync_min_interval = this->declare_parameter<double>("sync_min_interval", 0.0);
+  const double sync_max_interval = this->declare_parameter<double>("sync_max_interval", 0.05);
+  tf_timeout_ = this->declare_parameter<double>("tf_timeout", 0.05);
+  max_input_age_ = this->declare_parameter<double>("max_input_age", 0.5);
   if (!std::isfinite(sync_min_interval) || sync_min_interval < 0.0) {
     throw std::invalid_argument("sync_min_interval must be finite and nonnegative");
+  }
+  if (
+    !std::isfinite(sync_max_interval) || sync_max_interval <= 0.0 ||
+    !std::isfinite(tf_timeout_) || tf_timeout_ < 0.0 ||
+    !std::isfinite(max_input_age_) || max_input_age_ <= 0.0) {
+    throw std::invalid_argument(
+      "sync_max_interval and max_input_age must be positive; tf_timeout must be nonnegative");
   }
 
   this->get_parameter("lidar_frame", lidar_frame_);
@@ -47,8 +57,8 @@ SensorScanGenerationNode::SensorScanGenerationNode(const rclcpp::NodeOptions & o
 
   rmw_qos_profile_t qos_profile = {
     RMW_QOS_POLICY_HISTORY_KEEP_LAST,
-    1,
-    RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
+    5,
+    RMW_QOS_POLICY_RELIABILITY_RELIABLE,
     RMW_QOS_POLICY_DURABILITY_VOLATILE,
     RMW_QOS_DEADLINE_DEFAULT,
     RMW_QOS_LIFESPAN_DEFAULT,
@@ -57,6 +67,9 @@ SensorScanGenerationNode::SensorScanGenerationNode(const rclcpp::NodeOptions & o
     false};
 
   odometry_sub_.subscribe(this, "lidar_odometry", qos_profile);
+  // Publish chassis pose as soon as lidar odometry arrives, independently of clouds.
+  odometry_sub_.registerCallback(
+    std::bind(&SensorScanGenerationNode::odometryHandler, this, std::placeholders::_1));
   // loam_interface publishes reliable clouds; retain retransmission for their fragments.
   auto cloud_qos = qos_profile;
   cloud_qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
@@ -64,7 +77,8 @@ SensorScanGenerationNode::SensorScanGenerationNode(const rclcpp::NodeOptions & o
   laser_cloud_sub_.subscribe(this, "registered_scan", cloud_qos);
 
   sync_ = std::make_unique<message_filters::Synchronizer<SyncPolicy>>(
-    SyncPolicy(100), odometry_sub_, laser_cloud_sub_);
+    SyncPolicy(20), odometry_sub_, laser_cloud_sub_);
+  sync_->setMaxIntervalDuration(rclcpp::Duration::from_seconds(sync_max_interval));
   sync_->setInterMessageLowerBound(0, rclcpp::Duration::from_seconds(sync_min_interval));
   sync_->setInterMessageLowerBound(1, rclcpp::Duration::from_seconds(sync_min_interval));
   sync_->registerCallback(std::bind(
@@ -72,44 +86,75 @@ SensorScanGenerationNode::SensorScanGenerationNode(const rclcpp::NodeOptions & o
     std::placeholders::_2));
 }
 
-void SensorScanGenerationNode::laserCloudAndOdometryHandler(
-  const nav_msgs::msg::Odometry::ConstSharedPtr & odometry_msg,
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & pcd_msg)
+void SensorScanGenerationNode::odometryHandler(
+  const nav_msgs::msg::Odometry::ConstSharedPtr & odometry_msg)
 {
+  const rclcpp::Time stamp(odometry_msg->header.stamp);
+  if (
+    !isFresh(stamp) ||
+    (previous_odometry_valid_ && stamp <= previous_odometry_stamp_)) {
+    return;
+  }
+
   tf2::Transform tf_lidar_to_chassis;
+  tf2::Transform tf_lidar_to_robot_base;
   tf2::Transform tf_odom_to_chassis;
   tf2::Transform tf_odom_to_robot_base;
   tf2::Transform tf_odom_to_lidar;
 
   tf2::fromMsg(odometry_msg->pose.pose, tf_odom_to_lidar);
   try {
-    tf_lidar_to_robot_base_ = getTransform(lidar_frame_, robot_base_frame_, pcd_msg->header.stamp);
-    tf_lidar_to_chassis = getTransform(lidar_frame_, base_frame_, pcd_msg->header.stamp);
+    tf_lidar_to_robot_base = getTransform(lidar_frame_, robot_base_frame_, stamp);
+    tf_lidar_to_chassis = getTransform(lidar_frame_, base_frame_, stamp);
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), 2000,
-      "TF lookup failed: %s. Skipping scan and odometry.", ex.what());
+      "TF lookup failed at odometry time: %s. Skipping odometry.", ex.what());
+    return;
+  }
+  if (!isFresh(stamp)) {
     return;
   }
 
   tf_odom_to_chassis = tf_odom_to_lidar * tf_lidar_to_chassis;
-  tf_odom_to_robot_base = tf_odom_to_lidar * tf_lidar_to_robot_base_;
+  tf_odom_to_robot_base = tf_odom_to_lidar * tf_lidar_to_robot_base;
 
   publishTransform(
-    tf_odom_to_chassis, odometry_msg->header.frame_id, base_frame_, pcd_msg->header.stamp);
+    tf_odom_to_chassis, odometry_msg->header.frame_id, base_frame_, stamp);
   publishOdometry(
-    tf_odom_to_robot_base, odometry_msg->header.frame_id, robot_base_frame_, pcd_msg->header.stamp);
+    tf_odom_to_robot_base, odometry_msg->header.frame_id, robot_base_frame_, stamp);
+}
+
+void SensorScanGenerationNode::laserCloudAndOdometryHandler(
+  const nav_msgs::msg::Odometry::ConstSharedPtr & odometry_msg,
+  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & pcd_msg)
+{
+  if (
+    !isFresh(rclcpp::Time(odometry_msg->header.stamp)) ||
+    !isFresh(rclcpp::Time(pcd_msg->header.stamp))) {
+    return;
+  }
+  tf2::Transform tf_odom_to_lidar;
+  tf2::fromMsg(odometry_msg->pose.pose, tf_odom_to_lidar);
 
   sensor_msgs::msg::PointCloud2 out;
   pcl_ros::transformPointCloud(lidar_frame_, tf_odom_to_lidar.inverse(), *pcd_msg, out);
-  pub_laser_cloud_->publish(out);
+  if (isFresh(rclcpp::Time(pcd_msg->header.stamp))) {
+    pub_laser_cloud_->publish(out);
+  }
+}
+
+bool SensorScanGenerationNode::isFresh(const rclcpp::Time & stamp) const
+{
+  const double age = (now() - stamp).seconds();
+  return stamp.nanoseconds() > 0 && age >= -0.05 && age <= max_input_age_;
 }
 
 tf2::Transform SensorScanGenerationNode::getTransform(
   const std::string & target_frame, const std::string & source_frame, const rclcpp::Time & time)
 {
   auto transform_stamped = tf_buffer_->lookupTransform(
-    target_frame, source_frame, time, rclcpp::Duration::from_seconds(0.5));
+    target_frame, source_frame, time, rclcpp::Duration::from_seconds(tf_timeout_));
   tf2::Transform transform;
   tf2::fromMsg(transform_stamped.transform, transform);
   return transform;

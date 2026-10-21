@@ -37,6 +37,17 @@ rclcpp_components_register_node(${PROJECT_NAME}
 #############
 
 if(BUILD_TESTING)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME test_imu_heading
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_imu_heading.py
+      $<TARGET_FILE:fake_vel_transform_node>)
+  set_tests_properties(test_imu_heading PROPERTIES TIMEOUT 30
+    ENVIRONMENT "ROS_DOMAIN_ID=94;ROS_LOCALHOST_ONLY=1")
+  add_test(NAME test_remote_spin
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_remote_spin.py
+      $<TARGET_FILE:fake_vel_transform_node>)
+  set_tests_properties(test_remote_spin PROPERTIES TIMEOUT 40
+    ENVIRONMENT "ROS_DOMAIN_ID=96;ROS_LOCALHOST_ONLY=1")
   set(ament_cmake_clang_format_CLANG_FORMAT_VERSION 21)
   set(ament_cmake_clang_format_CONFIG_FILE "${CMAKE_SOURCE_DIR}/.clang-format")
   set(ament_cmake_clang_tidy_CONFIG_FILE "${CMAKE_SOURCE_DIR}/.clang-tidy")

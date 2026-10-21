@@ -37,12 +37,16 @@ public:
   explicit SensorScanGenerationNode(const rclcpp::NodeOptions & options);
 
 private:
+  void odometryHandler(const nav_msgs::msg::Odometry::ConstSharedPtr & odometry);
+
   void laserCloudAndOdometryHandler(
     const nav_msgs::msg::Odometry::ConstSharedPtr & odometry,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & laserCloud2);
 
   tf2::Transform getTransform(
     const std::string & target_frame, const std::string & source_frame, const rclcpp::Time & time);
+
+  bool isFresh(const rclcpp::Time & stamp) const;
 
   void publishTransform(
     const tf2::Transform & transform, const std::string & parent_frame,
@@ -70,7 +74,8 @@ private:
     nav_msgs::msg::Odometry, sensor_msgs::msg::PointCloud2>;
   std::unique_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
 
-  tf2::Transform tf_lidar_to_robot_base_;
+  double tf_timeout_;
+  double max_input_age_;
   rclcpp::Time previous_odometry_stamp_{0, 0, RCL_ROS_TIME};
   tf2::Transform previous_transform_;
   bool previous_odometry_valid_{false};

@@ -268,12 +268,15 @@ def generate_launch_description():
                 condition=IfCondition(auto_global_localization),
                 arguments=[
                     "--globalize",
+                    "--method",
+                    LaunchConfiguration("localization_method"),
                     "--seconds",
-                    "15",
+                    "60",
                     "--output",
                     PathJoinSubstitution([log_dir, "localization.json"]),
                 ],
                 parameters=[{"use_sim_time": use_sim_time}],
+                additional_env={"PYTHONNOUSERSITE": "1", "OPENBLAS_NUM_THREADS": "1"},
                 remappings=[("/tf", "tf"), ("/tf_static", "tf_static")],
                 output="screen",
             ),
@@ -298,6 +301,10 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument("use_joy_teleop", default_value="True"))
     ld.add_action(declare_slam_cmd)
     ld.add_action(declare_auto_global_localization_cmd)
+    ld.add_action(DeclareLaunchArgument(
+        "localization_method", default_value="amcl", choices=["amcl", "scan_match"],
+        description="Native global particles or automatic full-map scan matching for AMCL startup",
+    ))
     ld.add_action(declare_world_cmd)
     ld.add_action(declare_map_yaml_cmd)
     ld.add_action(declare_prior_pcd_file_cmd)
