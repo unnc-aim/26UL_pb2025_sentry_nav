@@ -6,7 +6,7 @@
 	url = https://github.com/SMBU-PolarBear-Robotics-Team/point_lio.git
 [submodule "pb_omni_pid_pursuit_controller"]
 	path = pb_omni_pid_pursuit_controller
-	url = https://github.com/SMBU-PolarBear-Robotics-Team/pb_omni_pid_pursuit_controller.git
+	url = https://github.com/unnc-aim/27UL_Sentry_pb_omni_pid_pursuit_controller.git
 [submodule "small_gicp_relocalization"]
 	path = small_gicp_relocalization
 	url = https://github.com/SMBU-PolarBear-Robotics-Team/small_gicp_relocalization.git
