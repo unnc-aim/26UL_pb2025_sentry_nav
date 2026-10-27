@@ -85,6 +85,7 @@ int planarVoxelDyObs[kPlanarVoxelNum] = {0};
 std::vector<float> planarPointElev[kPlanarVoxelNum];
 
 double laserCloudTime = 0;
+builtin_interfaces::msg::Time laserCloudStamp;
 bool newlaserCloud = false;
 
 double systemInitTime = 0;
@@ -140,6 +141,7 @@ void odometryHandler(const nav_msgs::msg::Odometry::ConstSharedPtr odom)
 void laserCloudHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr laserCloud2)
 {
   laserCloudTime = rclcpp::Time(laserCloud2->header.stamp).seconds();
+  laserCloudStamp = laserCloud2->header.stamp;
   if (!systemInited) {
     systemInitTime = laserCloudTime;
     systemInited = true;
@@ -638,7 +640,7 @@ int main(int argc, char ** argv)
       // publish points with elevation
       sensor_msgs::msg::PointCloud2 terrainCloud2;
       pcl::toROSMsg(*terrainCloudElev, terrainCloud2);
-      terrainCloud2.header.stamp = rclcpp::Time(static_cast<uint64_t>(laserCloudTime * 1e9));
+      terrainCloud2.header.stamp = laserCloudStamp;
       terrainCloud2.header.frame_id = "odom";
       pubLaserCloud->publish(terrainCloud2);
     }

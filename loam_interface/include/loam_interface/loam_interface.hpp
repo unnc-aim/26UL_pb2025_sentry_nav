@@ -15,6 +15,7 @@
 #ifndef LOAM_INTERFACE__LOAM_INTERFACE_HPP_
 #define LOAM_INTERFACE__LOAM_INTERFACE_HPP_
 
+#include <atomic>
 #include <memory>
 #include <string>
 
@@ -38,6 +39,7 @@ private:
 
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pcd_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+  rclcpp::CallbackGroup::SharedPtr cloud_callback_group_;
 
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pcd_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
@@ -51,7 +53,7 @@ private:
   std::string lidar_frame_;
   std::string base_frame_;
 
-  bool base_frame_to_lidar_initialized_;
+  std::atomic_bool base_frame_to_lidar_initialized_{false};
   bool align_initial_pose_;
   tf2::Transform tf_odom_to_lidar_odom_;
 };

@@ -45,9 +45,15 @@ LoamInterfaceNode::LoamInterfaceNode(const rclcpp::NodeOptions & options)
   pcd_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("registered_scan", 5);
   odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("lidar_odometry", 5);
 
+  // Large cloud transforms and reliable publication may take longer than one
+  // odometry period. Keep odometry runnable while that work is in progress.
+  cloud_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  rclcpp::SubscriptionOptions cloud_options;
+  cloud_options.callback_group = cloud_callback_group_;
   pcd_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
     registered_scan_topic_, 5,
-    std::bind(&LoamInterfaceNode::pointCloudCallback, this, std::placeholders::_1));
+    std::bind(&LoamInterfaceNode::pointCloudCallback, this, std::placeholders::_1),
+    cloud_options);
   odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
     state_estimation_topic_, 5,
     std::bind(&LoamInterfaceNode::odometryCallback, this, std::placeholders::_1));
@@ -55,7 +61,7 @@ LoamInterfaceNode::LoamInterfaceNode(const rclcpp::NodeOptions & options)
 
 void LoamInterfaceNode::pointCloudCallback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
 {
-  if (!base_frame_to_lidar_initialized_) {
+  if (!base_frame_to_lidar_initialized_.load(std::memory_order_acquire)) {
     return;
   }
   // NOTE: Input point cloud message is based on the `lidar_odom`
@@ -81,7 +87,7 @@ void LoamInterfaceNode::odometryCallback(const nav_msgs::msg::Odometry::ConstSha
       if (align_initial_pose_) {
         tf_odom_to_lidar_odom_ *= tf_lidar_odom_to_lidar.inverse();
       }
-      base_frame_to_lidar_initialized_ = true;
+      base_frame_to_lidar_initialized_.store(true, std::memory_order_release);
     } catch (tf2::TransformException & ex) {
       RCLCPP_WARN(this->get_logger(), "TF lookup failed: %s Retrying...", ex.what());
       return;

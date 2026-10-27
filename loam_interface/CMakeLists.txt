@@ -30,9 +30,17 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN loam_interface::LoamInterfaceNode
   EXECUTABLE ${PROJECT_NAME}_node
+  EXECUTOR MultiThreadedExecutor
 )
 
 if(BUILD_TESTING)
+  enable_testing()
+  add_executable(test_odometry_callbacks test/test_odometry_callbacks.cpp)
+  target_link_libraries(test_odometry_callbacks ${PROJECT_NAME})
+  ament_target_dependencies(test_odometry_callbacks rclcpp nav_msgs sensor_msgs tf2_ros)
+  add_test(NAME odometry_during_cloud_work COMMAND test_odometry_callbacks)
+  set_tests_properties(odometry_during_cloud_work PROPERTIES
+    TIMEOUT 15 ENVIRONMENT "ROS_DOMAIN_ID=120;ROS_LOCALHOST_ONLY=1")
   set(ament_cmake_clang_format_CLANG_FORMAT_VERSION 21)
   set(ament_cmake_clang_format_CONFIG_FILE "${CMAKE_SOURCE_DIR}/.clang-format")
   set(ament_cmake_clang_tidy_CONFIG_FILE "${CMAKE_SOURCE_DIR}/.clang-tidy")
